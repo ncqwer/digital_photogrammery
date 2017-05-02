@@ -36,13 +36,24 @@ void update(const Eigen::Matrix<double,5,1>& delta,
 			Eigen::Vector2f& para_hs,
 			Eigen::Vector3f& para_as);
 
-void least_square_optimize(const cv::Mat& left,
+double least_square_optimize(const cv::Mat& left,
 						   const cv::Mat& right,
 						   const cv::Point& ptl,
 						   const cv::Point& ptr,
 						   const int half_window,
 						   cv::Point2f& precise_ptl,
 						   cv::Point2f& precise_ptr);
+
+double VectorScalarProduct(const cv::Mat& roi_l,
+						   const cv::Mat& roi_r);
+
+double VectorScalarProject(const cv::Mat& roi_l,
+						   const cv::Mat& roi_r);
+double DiffSquareSum(const cv::Mat& roi_l,
+					 const cv::Mat& roi_r);
+
+double DiffAbsoluteSum(const cv::Mat& roi_l,
+					   const cv::Mat& roi_r);
 
 int main(int argc, char const *argv[])
 {
@@ -88,10 +99,14 @@ int main(int argc, char const *argv[])
 		Point ptr;
 		std::cout<<"============================="<<std::endl;
 		double distance=matchOnCorrelation(imgl,imgr,ptl,ptr,half_window);
-		cv::Point2f precise_ptl;
-		cv::Point2f precise_ptr;
-		if(distance > 0.90)
-			least_square_optimize(imgl,imgr,ptl,ptr,half_window,precise_ptl,precise_ptr);
+		// cv::Point2f precise_ptl;
+		// cv::Point2f precise_ptr;
+		// if(distance > 0.90)
+		// {
+		// 	distance = least_square_optimize(imgl,imgr,ptl,ptr,half_window,precise_ptl,precise_ptr);
+		// 	ptl = precise_ptl;
+		// 	ptr = precise_ptr;
+		// }
 		ptrs.push_back(ptr);
 		matches.push_back(DMatch(count,count,distance));
 		++count;
@@ -108,10 +123,13 @@ int main(int argc, char const *argv[])
 	}
 	auto value_size = values.size();
 	auto average_thresh = values_sum/value_size;
-	auto middle_thresh = average_thresh;
+	std::sort(values.begin(),values.end());
+	int middle_index = value_size/2;
+	auto middle_thresh = values[middle_index];
 	for(auto & match : matches)
 	{
-		if(abs(match.distance)>0.95)
+		// if(abs(match.distance)>average_thresh)
+		if(abs(match.distance)>middle_thresh)
 		{
 			good_matches.push_back(match);
 		}
@@ -195,7 +213,11 @@ double matchOnCorrelation(const cv::Mat& left,
 		//get roi in right
 		Mat roi_r(right,Rect(x-half_window,j-half_window,window_size,window_size));
 		//calculate 
-		double distance=correlation(roi_l,roi_r);
+		// double distance=correlation(roi_l,roi_r);
+		double distance=VectorScalarProduct(roi_l,roi_r);
+		// double distance=VectorScalarProject(roi_l,roi_r);
+		// double distance=1/DiffSquareSum(roi_l,roi_r);
+		// double distance=1/DiffAbsoluteSum(roi_l,roi_r);
 		if(distance>max_distance)
 		{
 			//record it
@@ -218,7 +240,7 @@ double matchOnCorrelation(const cv::Mat& left,
 //in: ptr
 //out: precise_ptl
 //out: precise_ptr
-void least_square_optimize(const cv::Mat& left,
+double least_square_optimize(const cv::Mat& left,
 						   const cv::Mat& right,
 						   const cv::Point& ptl,
 						   const cv::Point& ptr,
@@ -282,6 +304,7 @@ void least_square_optimize(const cv::Mat& left,
 		std::cout<<"hello iter_times:"<<iter_num++<<" iteration distance:"<<distance<<std::endl;
 		if(distance < last_distance)
 		{
+			last_distance = distance;
 			break; //break out iteration
 		}
 		last_distance = distance;
@@ -346,6 +369,7 @@ void least_square_optimize(const cv::Mat& left,
 	precise_ptl.y=precise_l_y;
 	precise_ptr.x=precise_r_x;
 	precise_ptr.y=precise_r_y;
+	return last_distance;
 }
 
 void getPointPos(const vector<Point2f>& ptls,
@@ -438,7 +462,18 @@ double VectorScalarProduct(const cv::Mat& roi_l,
 	roi_l.convertTo(roi_lf,CV_32FC1);
 	roi_r.convertTo(roi_rf,CV_32FC1);
 	cv::multiply(roi_l,roi_r,temp);
-	return cv::sum(temp)[0];
+	// auto s = cv::sum(temp);
+	// auto s_l = cv::sum(roi_l);
+	// auto s_r = cv::sum(roi_r);
+	// return s[0];
+	double s = 0;
+	auto l_begin = roi_l.begin<float>();
+	auto l_end = roi_l.end<float>();
+	auto r_begin = roi_r.begin<float>();
+	for(;l_begin != l_end;++l_begin,++r_begin)
+	{
+		s += (*l_begin)*(*r_begin);
+	}
 }
 
 double VectorScalarProject(const cv::Mat& roi_l,
